@@ -43,49 +43,25 @@ body {
 <body>
 <div>
 	<input type ="range" max="3" min="0.1"
-			oninput="onChangeThreshold()"
+			oninput="changeThreshold(this.value)"
+			onchange="changeThreshold(this.value)"
 			step="0.1" name="rangeVal" id="rangeVal" value="2">
 	</input>
-	<em id="rangeValLabel" style="font-style: normal;"></em>
+	<em id="rangeValLabel" style="font-style: normal;">2</em>
 </fieldset>
-<svg width="1300" height="600"></svg>
+
+<div>
+	<svg width="1300" height="400"></svg>
+</div>
 </body>
+
 <script src="https://d3js.org/d3.v4.min.js"></script>
+
 <script>
 
-var onChangeThreshold = function(){
-	var x = document.getElementById("rangeVal").value;
-	document.getElementById('rangeValLabel').innerHTML = x;
-
-	plotDots(x);
-};
-
-var plotDots = function(val){
-	d3.select("circle-red").remove();
-
-	// g.selectAll("circle-red").data(data)
-	// 			.enter()
-	// 			.append("circle")
-	// 			.filter(function(d){ return d.Diff < -val})
-	// 			.style("fill", "red")
-	// 			.attr("cx", function(d){ return x(d.Date); })
-	// 			.attr("cy", function(d){ return y(d.Rate); })
-	// 			.attr("r", 2);
-
-	// 	g.selectAll("circle-green").data(data)
-	// 			.enter()
-	// 			.append("circle")
-	// 			.filter(function(d){ return d.Diff > val})
-	// 			.style("fill", "green")
-	// 			.attr("cx", function(d){ return x(d.Date); })
-	// 			.attr("cy", function(d){ return y(d.Rate); })
-	// 			.attr("r", 2);
-};
-
-var svg = d3.select("svg"),
-    margin = {top: 20, right: 200, bottom: 30, left: 40},
-    width = +svg.attr("width") - margin.left - margin.right,
-    height = +svg.attr("height") - margin.top - margin.bottom;
+var margin = {top: 20, right: 200, bottom: 30, left: 40},
+    width = 1300 - margin.left - margin.right,
+    height = 400 - margin.top - margin.bottom;
 
 var parseTime = d3.timeParse("%Y%m%d")
     bisectDate = d3.bisector(function(d) { return d.Date; }).left;
@@ -93,156 +69,222 @@ var parseTime = d3.timeParse("%Y%m%d")
 var x = d3.scaleTime().range([0, width]);
 var y = d3.scaleLinear().range([height, 0]);
 
+var xAxis, yAxis, gX, gY, focus;
+
+var offset = {x:0, y:0};
+
+var zoom = d3.zoom()
+	.scaleExtent([0.8,1.2])
+	.extent([[0,0],[width, height]])
+	.on("zoom", Zoom);
+
+var svg = d3.select("svg").call(zoom);
+    
+svg.append("svg:clipPath")
+	.attr("id", "clip")
+	.append("svg:rect")
+	.attr("x", 0)
+	.attr("y", 0)
+	.attr("width", width)
+	.attr("height", height);
+
+var cdata = [];
 
 var line = d3.line()
-    .x(function(d) { return x(d.Date); })
-    .y(function(d) { return y(d.Rate); });
+	.x(function(d) { return x(d.Date); })
+	.y(function(d) { return y(d.Rate); });
 
 var g = svg.append("g")
-    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+  .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-d3.json("merge.json", function(error, data) {
-    if (error) throw error;
 
-    data.reverse();
+d3.json("merge_long.json", function(error, data) {
+	if (error) throw error;
 
-		for(var i=0; i<data.length; i++){
-      data[i].Date = parseTime(data[i].Date);
-			data[i].Rate = +data[i].Rate;
+  data.reverse();
 
-			if(i < data.length-1)
-				data[i].Diff = data[i+1].Rate - data[i].Rate;
-		}
+	for(var i=0; i<data.length; i++){
+		data[i].Date = parseTime(data[i].Date);
+		data[i].Rate = +data[i].Rate;
 
-    x.domain(d3.extent(data, function(d) { return d.Date; }));
-    y.domain([d3.min(data, function(d) { return d.Rate; }) / 1.1, d3.max(data, function(d) { return d.Rate; }) * 1.005]);
+		if(i < data.length-1)
+			data[i].Diff = data[i+1].Rate - data[i].Rate;
+	}
 
-    g.append("g")
-        .attr("class", "axis axis--x")
-        .attr("transform", "translate(0," + height + ")")
-        .call(d3.axisBottom(x).tickFormat(d3.timeFormat("%Y/%d")));
+	cdata = data;	
 
-    g.append("g")
-        .attr("class", "axis axis--y")
-        .call(d3.axisLeft(y).ticks(6).tickFormat(function(d) { return parseInt(d); }))
-      .append("text")
-        .attr("class", "axis-title")
-        .attr("transform", "rotate(-90)")
-        .attr("y", 6)
-        .attr("dy", ".71em")
-        .style("text-anchor", "end")
-        .attr("fill", "#5D6971");
+	x.domain([new Date(2016,1,1), new Date(2016,12,31)]);
+	y.domain([d3.min(data, function(d) { return d.Rate; }) / 1.1, d3.max(data, function(d) { return d.Rate; }) * 1.005]);
 
-    g.append("path")
-        .datum(data)
-        .attr("class", "line")
-        .attr("d", line);
+	xAxis = d3.axisBottom(x).tickFormat(d3.timeFormat("%Y/%d"));
+	yAxis = d3.axisLeft(y).ticks(6).tickFormat(function(d) { return parseInt(d); });
 
-		g.selectAll("circle-red").data(data)
-				.enter()
-				.append("circle")
-				.filter(function(d){ return d.Diff < -2})
-				.style("fill", "red")
-				.attr("cx", function(d){ return x(d.Date); })
-				.attr("cy", function(d){ return y(d.Rate); })
-				.attr("r", 2);
+	gX = g.append("g")
+		.attr("class", "axis axis--x")
+		.attr("transform", "translate(0," + height + ")")
+		.call(xAxis);
 
-		g.selectAll("circle-green").data(data)
-				.enter()
-				.append("circle")
-				.filter(function(d){ return d.Diff > 1})
-				.style("fill", "green")
-				.attr("cx", function(d){ return x(d.Date); })
-				.attr("cy", function(d){ return y(d.Rate); })
-				.attr("r", 2);
+	gY = g.append("g")
+		.attr("class", "axis axis--y")
+		.call(yAxis);
 
-    var focus = g.append("g")
-        .attr("class", "focus")
-        .style("display", "none");
+	gY.append("text")
+		.attr("class", "axis-title")
+		.attr("transform", "rotate(-90)")
+		.attr("y", 6)
+		.attr("dy", ".71em")
+		.style("text-anchor", "end")
+		.attr("fill", "#5D6971");
 
-    focus.append("line")
-        .attr("class", "x-hover-line hover-line")
-        .attr("y1", 0)
-        .attr("y2", height);
+	g.append("path")
+		.datum(data)
+		.attr("class", "line")
+		.attr("d", line)
+		.attr("clip-path", "url(#clip)");
 
-    focus.append("line")
-        .attr("class", "y-hover-line hover-line")
-        .attr("x1", width)
-        .attr("x2", width);
+	plotDots(2);
 
-    focus.append("circle")
-        .attr("r", 2.0);
+	focus = g.append("g")
+		.attr("class", "focus")
+		.style("display", "none");
 
-		focus.append("text")
-				.attr("class", "tooltip-rate")
-				.style("font-weight", "bold")
-        .attr("x", 15)
-      	.attr("dy", "0px");
+	constructFocus(focus);
 
-    focus.append("text")
-				.attr("class", "tooltip-0")
-        .attr("x", 15)
-      	.attr("dy", "20px");
+	svg.append("rect")
+		.attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+		.attr("class", "overlay")
+		.attr("width", width)
+		.attr("height", height)
 
-		focus.append("text")
-				.attr("class", "tooltip-1")
-				.attr("x", 15)
-				.attr("dy", "40px");
-
-		focus.append("text")
-				.attr("class", "tooltip-2")
-				.attr("x", 15)
-				.attr("dy", "60px");
-
-		focus.append("text")
-				.attr("class", "tooltip-3")
-				.attr("x", 15)
-				.attr("dy", "80px");
-
-		focus.append("text")
-				.attr("class", "tooltip-4")
-				.attr("x", 15)
-				.attr("dy", "100px");
-
-		focus.append("text")
-				.attr("class", "tooltip-5")
-				.attr("x", 15)
-				.attr("dy", "120px");
-
-		focus.append("text")
-				.attr("class", "tooltip-6")
-				.attr("x", 15)
-				.attr("dy", "140px");
-
-    svg.append("rect")
-        .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
-        .attr("class", "overlay")
-        .attr("width", width)
-        .attr("height", height)
-
-        .on("mouseover", function() { focus.style("display", null); })
-        .on("mouseout", function() { focus.style("display", "none"); })
-        .on("mousemove", mousemove);
-
-    function mousemove() {
-      var x0 = x.invert(d3.mouse(this)[0]),
-          i = bisectDate(data, x0, 1),
-          d0 = data[i - 1],
-          d1 = data[i],
-          d = x0 - d0.Date > d1.Date - x0 ? d1 : d0;
-
-      focus.attr("transform", "translate(" + x(d.Date) + "," + y(d.Rate) + ")");
-
-			focus.selectAll(".tooltip-rate").text(function() { return d.Rate; });
-
-			for(var i=0; i<d.Facts.length; i++)
-			{
-				focus.selectAll(".tooltip-" + i).text(function() { return d.Facts[i].Title; });
-			}
-
-      // focus.select(".x-hover-line").attr("y2", height - y(d.Rate));
-      // focus.select(".y-hover-line").attr("x2", width + width);
-    }
+		.on("mouseover", function() { focus.style("display", null); })
+		.on("mouseout", function() { focus.style("display", "none"); })
+		.on("mousemove", mouseMove);
 });
+
+function constructFocus(focus){
+	focus.append("line")
+		.attr("class", "x-hover-line hover-line")
+		.attr("y1", 0)
+		.attr("y2", height);
+
+	focus.append("line")
+		.attr("class", "y-hover-line hover-line")
+		.attr("x1", width)
+		.attr("x2", width);
+
+	focus.append("circle")
+		.attr("r", 2.0);
+
+	focus.append("text")
+		.attr("class", "tooltip-rate")
+		.style("font-weight", "bold")
+		.attr("x", 15)
+		.attr("dy", "0px");
+
+	focus.append("text")
+		.attr("class", "tooltip-0")
+		.attr("x", 15)
+		.attr("dy", "20px");
+
+	focus.append("text")
+		.attr("class", "tooltip-1")
+		.attr("x", 15)
+		.attr("dy", "40px");
+
+	focus.append("text")
+		.attr("class", "tooltip-2")
+		.attr("x", 15)
+		.attr("dy", "60px");
+
+	focus.append("text")
+		.attr("class", "tooltip-3")
+		.attr("x", 15)
+		.attr("dy", "80px");
+
+	focus.append("text")
+		.attr("class", "tooltip-4")
+		.attr("x", 15)
+		.attr("dy", "100px");
+
+	focus.append("text")
+		.attr("class", "tooltip-5")
+		.attr("x", 15)
+		.attr("dy", "120px");
+
+	focus.append("text")
+		.attr("class", "tooltip-6")
+		.attr("x", 15)
+		.attr("dy", "140px");
+};
+
+function changeThreshold(val){
+	document.getElementById('rangeValLabel').innerHTML = val;
+	plotDots(val);
+};
+
+function plotDots(val){
+	d3.selectAll("circle").remove();
+
+	g.selectAll("circle-red").data(cdata)
+		.enter()
+		.append("circle")
+		.attr("class", "circle-red")
+		.filter(function(d){ return d.Diff < -val})
+		.style("fill", "red")
+		.attr("cx", function(d){ return x(d.Date); })
+		.attr("cy", function(d){ return y(d.Rate); })
+		.attr("r", 2)
+		.attr("clip-path", "url(#clip)");
+
+	g.selectAll("circle-green").data(cdata)
+		.enter()
+		.append("circle")
+		.attr("class", "circle-green")
+		.filter(function(d){ return d.Diff > val})
+		.style("fill", "green")
+		.attr("cx", function(d){ return x(d.Date); })
+		.attr("cy", function(d){ return y(d.Rate); })
+		.attr("r", 2)
+		.attr("clip-path", "url(#clip)");
+
+	svg.selectAll(".circle-green, .circle-red")
+		.attr("transform", "translate(" + offset.x + ",0)");
+};
+
+function mouseMove() {
+	var x0 = x.invert(d3.mouse(this)[0] - offset.x),
+			i = bisectDate(cdata, x0, 1),
+			d0 = cdata[i - 1],
+			d1 = cdata[i],
+			d = x0 - d0.Date > d1.Date - x0 ? d1 : d0;
+
+	var dx = x(d.Date) + offset.x;
+
+	focus.attr("transform", "translate(" + dx + "," + y(d.Rate) + ")");
+
+	focus.selectAll(".tooltip-rate").text(function() { return d.Rate; });
+
+	for(var i=0; i<d.Facts.length; i++)
+	{
+		focus.selectAll(".tooltip-" + i).text(function() { return d.Facts[i].Title; });
+	}
+};
+
+function Zoom(){
+	var transform = d3.event.transform;
+	transform.y = 0;
+
+	offset = {x: transform.x, y: transform.y};
+
+	svg.selectAll(".line, .circle-red, .circle-green")
+		.attr("transform", transform);
+
+	svg.select("#clip > rect")
+		.attr("x", -offset.x);
+
+	gX.call(xAxis.scale(d3.event.transform.rescaleX(x)));
+	gY.call(yAxis.scale(d3.event.transform.rescaleY(y)));
+};
+
 
 </script>
