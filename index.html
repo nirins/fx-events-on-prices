@@ -56,6 +56,7 @@ body {
 </body>
 
 <script src="https://d3js.org/d3.v4.min.js"></script>
+<script src="moment.min.js"></script>
 
 <script>
 
@@ -71,12 +72,12 @@ var y = d3.scaleLinear().range([height, 0]);
 
 var xAxis, yAxis, gX, gY, focus;
 
-var offset = {x:0, y:0};
+var gtransform = {x:0, y:0, k:1};
 
 var zoom = d3.zoom()
-	.scaleExtent([0.8,1.2])
+	.scaleExtent([0.6,1.5])
 	.extent([[0,0],[width, height]])
-	.on("zoom", Zoom);
+	.on("zoom", doZoom);
 
 var svg = d3.select("svg").call(zoom);
     
@@ -114,9 +115,9 @@ d3.json("merge_long.json", function(error, data) {
 	cdata = data;	
 
 	x.domain([new Date(2016,1,1), new Date(2016,12,31)]);
-	y.domain([d3.min(data, function(d) { return d.Rate; }) / 1.1, d3.max(data, function(d) { return d.Rate; }) * 1.005]);
+	y.domain([d3.min(data, function(d) { return d.Rate; }) / 1.001, d3.max(data, function(d) { return d.Rate; }) * 1.005]);
 
-	xAxis = d3.axisBottom(x).tickFormat(d3.timeFormat("%Y/%d"));
+	xAxis = d3.axisBottom(x).tickFormat(d3.timeFormat("%Y/%m"));
 	yAxis = d3.axisLeft(y).ticks(6).tickFormat(function(d) { return parseInt(d); });
 
 	gX = g.append("g")
@@ -174,6 +175,12 @@ function constructFocus(focus){
 
 	focus.append("circle")
 		.attr("r", 2.0);
+
+	focus.append("text")
+		.attr("class", "tooltip-date")
+		.style("font-weight", "bold")
+		.attr("x", -50)
+		.attr("dy", "0px");
 
 	focus.append("text")
 		.attr("class", "tooltip-rate")
@@ -248,43 +255,51 @@ function plotDots(val){
 		.attr("clip-path", "url(#clip)");
 
 	svg.selectAll(".circle-green, .circle-red")
-		.attr("transform", "translate(" + offset.x + ",0)");
+		.attr("transform", "translate(" + gtransform.x + ",0)scale(" + gtransform.k + ")");
 };
 
 function mouseMove() {
-	var x0 = x.invert(d3.mouse(this)[0] - offset.x),
+	var mouse_x = d3.mouse(this)[0];
+	var x_rel = (mouse_x - gtransform.x) / gtransform.k;
+
+	var x0 = x.invert(x_rel),
 			i = bisectDate(cdata, x0, 1),
 			d0 = cdata[i - 1],
 			d1 = cdata[i],
 			d = x0 - d0.Date > d1.Date - x0 ? d1 : d0;
 
-	var dx = x(d.Date) + offset.x;
+	var dx = x(d.Date) * gtransform.k + gtransform.x;
+	var dy = y(d.Rate) * gtransform.k;
 
-	focus.attr("transform", "translate(" + dx + "," + y(d.Rate) + ")");
-
-	focus.selectAll(".tooltip-rate").text(function() { return d.Rate; });
+	focus.selectAll(".tooltip-date").text(function() { return moment(d.Date).format("M/D"); });	
+	focus.selectAll(".tooltip-rate").text(function() { return d.Rate });
 
 	for(var i=0; i<d.Facts.length; i++)
 	{
 		focus.selectAll(".tooltip-" + i).text(function() { return d.Facts[i].Title; });
 	}
+
+	focus.attr("transform", "translate(" + dx + "," + dy + ")");
+	focus.attr("visibility", "visible");
 };
 
-function Zoom(){
+function doZoom(){
+	focus.attr("visibility", "hidden");
+
 	var transform = d3.event.transform;
 	transform.y = 0;
 
-	offset = {x: transform.x, y: transform.y};
+	gtransform = {x: transform.x, y: transform.y, k: transform.k};
 
 	svg.selectAll(".line, .circle-red, .circle-green")
 		.attr("transform", transform);
 
 	svg.select("#clip > rect")
-		.attr("x", -offset.x);
+		.attr("x", -transform.x / transform.k)
+		.attr("width", width / transform.k);		
 
 	gX.call(xAxis.scale(d3.event.transform.rescaleX(x)));
 	gY.call(yAxis.scale(d3.event.transform.rescaleY(y)));
 };
-
 
 </script>
